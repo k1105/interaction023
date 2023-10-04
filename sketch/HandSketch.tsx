@@ -27,6 +27,7 @@ export const HandSketch = ({ handpose }: Props) => {
     Composites = Matter.Composites;
   const floors: Matter.Body[] = [];
   const comp = Composite.create();
+  const floorWidth = 1000;
 
   for (let i = 0; i < 5; i++) {
     // floors
@@ -34,7 +35,7 @@ export const HandSketch = ({ handpose }: Props) => {
       Bodies.rectangle(
         (window.innerWidth / 6) * (i + 1),
         (window.innerHeight / 3) * 2,
-        250,
+        floorWidth,
         10,
         //@ts-ignore
         { chamfer: 0, isStatic: true }
@@ -149,7 +150,7 @@ export const HandSketch = ({ handpose }: Props) => {
       p5.rectMode(p5.CENTER);
       p5.translate(0, -(dLeft + dRight) / 2);
       p5.rotate(-theta);
-      p5.rect(0, 0, 250, 10);
+      p5.rect(0, 0, floorWidth, 10);
       Matter.Body.setPosition(
         floors[n],
         {
@@ -191,6 +192,25 @@ export const HandSketch = ({ handpose }: Props) => {
       );
     }
     p5.pop();
+
+    for (const ball of balls) {
+      const circle = ball.body;
+      if (
+        circle.position.y > p5.height + 200 ||
+        circle.position.x > p5.width + 200 ||
+        circle.position.x < -200
+      ) {
+        Composite.remove(engine.world, ball.body);
+        const target = balls.indexOf(ball);
+        balls.splice(target, 1);
+      }
+    }
+
+    if (balls.length == 0) {
+      const newBall = new Ball({ x: window.innerWidth / 2, y: -1000 }, 80);
+      balls.push(newBall);
+      Composite.add(engine.world, newBall.body);
+    }
 
     Engine.update(engine);
 
