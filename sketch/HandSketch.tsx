@@ -27,7 +27,7 @@ export const HandSketch = ({ handpose }: Props) => {
     Composites = Matter.Composites;
   const floors: Matter.Body[] = [];
   const comp = Composite.create();
-  const floorWidth = 1000;
+  const floorWidth = 300;
 
   for (let i = 0; i < 5; i++) {
     // floors
