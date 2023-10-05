@@ -8,8 +8,14 @@ import { Monitor } from "../components/Monitor";
 import { Handpose } from "../@types/global";
 import { DisplayHands } from "../lib/DisplayHandsClass";
 import { HandposeHistory } from "../lib/HandposeHitsoryClass";
+import * as Tone from "tone";
 import Matter from "matter-js";
+import { Event } from "../lib/EventClass";
+import { Effect } from "../lib/EffectClass";
+import { Opacity } from "../lib/OpacityClass";
+import { Point } from "../lib/PointClass";
 import { Ball } from "../lib/BallClass";
+import { ScoreMonitor } from "../lib/ScoreMonitor";
 
 type Props = {
   handpose: MutableRefObject<Hand[]>;
@@ -23,10 +29,8 @@ export const HandSketch = ({ handpose }: Props) => {
   // module aliases
   let Engine = Matter.Engine,
     Bodies = Matter.Bodies,
-    Composite = Matter.Composite,
-    Composites = Matter.Composites;
+    Composite = Matter.Composite;
   const floors: Matter.Body[] = [];
-  const comp = Composite.create();
   const floorWidth = 300;
 
   for (let i = 0; i < 5; i++) {
@@ -41,13 +45,34 @@ export const HandSketch = ({ handpose }: Props) => {
         { chamfer: 0, isStatic: true }
       )
     );
-    Composite.add(comp, floors[i]);
   }
+  const points: Point[] = [];
+  for (let i = 0; i < 3; i++) {
+    points.push(
+      new Point({
+        position: {
+          x: window.innerWidth * (Math.random() * 0.8 + 0.1),
+          y: window.innerHeight * (Math.random() * 0.3 + 0.1),
+        },
+        size: 30,
+      })
+    );
+  }
+  const events = [new Event("+1", 50)];
 
   const balls: Ball[] = [];
   for (let i = 0; i < 1; i++) {
     balls.push(new Ball({ x: window.innerWidth / 2, y: -1000 }, 80));
   }
+
+  const effectList: Effect[] = [];
+
+  const opacity = new Opacity();
+
+  const score = useRef<number>(0);
+  const bestScore = useRef<number>(0);
+  const displayScore = useRef<number>(0);
+  const displayBestScore = useRef<number>(0);
 
   // create an engine
   let engine: Matter.Engine;
@@ -59,6 +84,9 @@ export const HandSketch = ({ handpose }: Props) => {
   const multi = 1.3;
 
   const distList: number[] = new Array(10).fill(0);
+  const player = new Tone.Player(
+    "https://k1105.github.io/sound_effect/audio/wood_attack.m4a"
+  ).toDestination();
 
   const debugLog = useRef<{ label: string; value: any }[]>([]);
 
@@ -73,11 +101,7 @@ export const HandSketch = ({ handpose }: Props) => {
     p5.strokeWeight(10);
 
     engine = Engine.create();
-    Composite.add(engine.world, [
-      ...balls.map((b) => b.body),
-      ...floors,
-      // ...bucket,
-    ]);
+    Composite.add(engine.world, [...balls.map((b) => b.body), ...floors]);
   };
 
   const draw = (p5: p5Types) => {
@@ -193,6 +217,8 @@ export const HandSketch = ({ handpose }: Props) => {
     }
     p5.pop();
 
+    p5.push();
+    p5.noStroke();
     for (const ball of balls) {
       const circle = ball.body;
       if (
@@ -204,33 +230,158 @@ export const HandSketch = ({ handpose }: Props) => {
         const target = balls.indexOf(ball);
         balls.splice(target, 1);
       }
+
+      for (const event of events) {
+        if (event.state == "born") event.state = "alive";
+        event.update(ball);
+
+        if (event.state == "hit") {
+          effectList.push(new Effect(event.position));
+          if (event.type == "x2") {
+            Matter.Body.scale(circle, 2, 2);
+            ball.setMultiply(2);
+            ball.updateScale(2);
+          } else if (event.type == "x0.5") {
+            Matter.Body.scale(circle, 0.5, 0.5);
+            ball.setMultiply(0.5);
+            ball.updateScale(0.5);
+          } else if (event.type == "+1") {
+            const newBall = new Ball(
+              { x: window.innerWidth / 2, y: -1000 },
+              80
+            );
+            balls.push(newBall);
+            Composite.add(engine.world, newBall.body);
+          }
+          event.state = "dead";
+        }
+
+        if (event.isExpired()) {
+          if (event.type == "x2" || event.type == "x0.5") {
+            for (const targetBall of balls) {
+              const scale = 1 / targetBall.getMultiply();
+              if (scale !== 1) {
+                Matter.Body.scale(targetBall.body, scale, scale);
+                targetBall.updateScale(scale);
+                targetBall.setMultiply(1);
+                break;
+              }
+            }
+          }
+          const target = events.indexOf(event);
+          events.splice(target, 1);
+        }
+      }
+
+      bestScore.current = Math.max(score.current, bestScore.current);
     }
 
     if (balls.length == 0) {
       const newBall = new Ball({ x: window.innerWidth / 2, y: -1000 }, 80);
       balls.push(newBall);
       Composite.add(engine.world, newBall.body);
+      score.current = 0;
+      opacity.pulse();
     }
 
     Engine.update(engine);
 
-    // draw floor
-    // p5.rectMode(p5.CENTER);
-    // for (const floor of floors) {
+    // p5.rect(300, 300, 10, 100);
+    // p5.rect(300, 390, 300, 10);
+    // p5.rect(600, 300, 10, 100);
+
+    // 長方形の描画
+    // for (let i = 0; i < floors.length; i++) {
     //   p5.push();
     //   p5.noFill();
+    //   p5.stroke(255, 0, 0);
     //   p5.strokeWeight(1);
-    //   p5.translate(floor.position.x, floor.position.y);
-    //   p5.rotate(floor.angle);
-    //   p5.rect(0, 0, 250, 10);
+    //   p5.beginShape();
+    //   for (let j = 0; j < 4; j++)
+    //     p5.vertex(floors[i].vertices[j].x, floors[i].vertices[j].y);
+    //   p5.endShape(p5.CLOSE);
     //   p5.pop();
     // }
 
-    p5.push();
-    p5.noStroke();
+    for (const point of points) {
+      point.update(balls, score);
+      if (point.state == "hit") {
+        //play a middle 'C' for the duration of an 8th note
+        Tone.loaded().then(() => {
+          player.start();
+        });
+        effectList.push(new Effect(point.position));
+        point.state = "dying";
+      }
+      if (point.state == "dead") {
+        const target = points.indexOf(point);
+        points.splice(target, 1);
+      }
+    }
+
+    for (const effect of effectList) {
+      effect.update();
+      effect.show(p5);
+      if (effect.state == "dead") {
+        const target = effectList.indexOf(effect);
+        effectList.splice(target, 1);
+      }
+    }
+
+    if (points.length == 0) {
+      setTimeout(function () {
+        while (points.length < 3) {
+          points.push(
+            new Point({
+              position: {
+                x: window.innerWidth * (Math.random() * 0.8 + 0.1),
+                y: window.innerHeight * (Math.random() * 0.3 + 0.1),
+              },
+              size: 30,
+            })
+          );
+        }
+      }, 1000);
+    }
+
+    opacity.update();
+
+    /* draw circle */
     for (const ball of balls) {
       ball.show(p5);
     }
+    for (const event of events) event.show(p5);
+    for (const point of points) point.show(p5);
+
+    /*Score */
+
+    if (displayScore.current !== score.current) {
+      if (score.current > displayScore.current) {
+        displayScore.current = Math.min(
+          displayScore.current + 1,
+          score.current
+        );
+      } else {
+        displayScore.current = Math.max(
+          displayScore.current - 1,
+          score.current
+        );
+      }
+    }
+    displayBestScore.current = Math.max(
+      displayScore.current,
+      displayBestScore.current
+    );
+
+    p5.translate(0, p5.height - 200);
+    ScoreMonitor({
+      score: displayScore.current,
+      bestScore: displayBestScore.current,
+      p5,
+    });
+
+    /* Score */
+
     p5.pop();
   };
 
